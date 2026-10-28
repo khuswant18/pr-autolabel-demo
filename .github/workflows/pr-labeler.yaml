@@ -1,0 +1,45 @@
+name: PR Labeler
+
+on:
+  # Runs in the context of the base branch, so it also works for fork PRs.
+  # Safe because the PR's code is never checked out.
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions: {}
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    permissions:
+      # reads .github/labeler.yml
+      contents: read
+      # applies the labels
+      pull-requests: write
+    steps:
+      - name: Label by changed files
+        uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0
+
+      - name: Label by PR title
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const map = {
+              feat: 'feature', fix: 'bug', docs: 'documentation', ci: 'ci/cd',
+              test: 'Tests', refactor: 'Refactoring', chore: 'maintenance', build: 'maintenance',
+            };
+            const title = context.payload.pull_request.title;
+            const m = title.match(/^(\w+)(?:\(([^)]+)\))?!?:/);
+            if (!m) {
+              core.info(`Title is not a conventional commit, skipping: ${title}`);
+              return;
+            }
+            const labels = [map[m[1]]].filter(Boolean);
+            if (/security|cve/i.test(m[2] || '')) labels.push('security');
+            if (labels.length === 0) return;
+            core.info(`Adding labels: ${labels.join(', ')}`);
+            await github.rest.issues.addLabels({
+              ...context.repo,
+              issue_number: context.issue.number,
+              labels,
+            });
